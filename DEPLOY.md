@@ -12,9 +12,16 @@
 
 1. Open the repo on GitHub → **Actions**
 2. Click **Run logs2cookies bot** (left sidebar)
-3. **Run workflow** → pick duration (1 / 2 / 4 / 6 hours) → **Run workflow**
+3. **Run workflow** and choose:
+   - **no — run checks only** — runs tests/vet/fmt/build only (safe default)
+   - **yes — deploy bot after checks** — runs the same checks, then starts the bot on Windows
+4. Pick duration (1 / 2 / 4 / 6 hours) when deploying
+5. **Run workflow**
 
-The job builds from source, runs tests, then starts the bot. It stops automatically when the timer ends.
+Pushes to `main` also run the **CI** workflow automatically (no bot deploy).
+
+The deploy job only runs after all checks pass:
+`go mod verify` · tidy check · `gofmt` · `go vet` · `go test -race` · `go build`
 
 Downloads and extraction temp files go to **`D:\botdata\work`** on the Windows runner (the large temp disk — not the small `C:` OS volume).
 

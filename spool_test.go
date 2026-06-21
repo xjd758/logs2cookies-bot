@@ -73,9 +73,9 @@ func TestStreamFilterToZip(t *testing.T) {
 
 	zipPath := filepath.Join(dir, "out.zip")
 	selected := map[string]bool{
-		"netflix.com":  true,
-		"steam.com":    true,
-		"discord.com":  true,
+		"netflix.com": true,
+		"steam.com":   true,
+		"discord.com": true,
 	}
 	written, total, err := streamFilterToZip(spoolPath, zipPath, selected, nil)
 	if err != nil {

@@ -3,8 +3,16 @@ name: Run logs2cookies bot
 on:
   workflow_dispatch:
     inputs:
+      confirm_deploy:
+        description: Checks must pass first — deploy the bot?
+        required: true
+        type: choice
+        default: "no — run checks only"
+        options:
+          - "no — run checks only"
+          - "yes — deploy bot after checks"
       hours:
-        description: How long to keep the bot online
+        description: How long to keep the bot online (only if deploying)
         required: true
         default: "6"
         type: choice
@@ -19,8 +27,50 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  bot:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Verify modules
+        run: go mod verify
+
+      - name: Check go.mod tidy
+        run: |
+          go mod tidy
+          git diff --exit-code go.mod go.sum
+
+      - name: Check formatting
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "gofmt needed on:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test -count=1 -race ./...
+
+      - name: Build
+        run: go build -ldflags="-s -w" -o logs2cookies .
+
+  deploy:
     # Windows runner: large temp storage lives on D: (not the small C: OS disk)
+    needs: checks
+    if: github.event.inputs.confirm_deploy == 'yes — deploy bot after checks'
     runs-on: windows-latest
     timeout-minutes: 360
 
@@ -40,9 +90,6 @@ jobs:
           Get-PSDrive -PSProvider FileSystem | Format-Table Name, Used, Free -AutoSize
           New-Item -ItemType Directory -Force -Path 'D:\botdata' | Out-Null
           Write-Host 'Bot work dir: D:\botdata\work'
-
-      - name: Test
-        run: go test ./...
 
       - name: Build
         run: go build -ldflags="-s -w" -o logs2cookies.exe .
