@@ -114,14 +114,22 @@ jobs:
           if (-not $hours) { $hours = '6' }
           $hours = [int]$hours
           Write-Host "Starting bot for ${hours}h on WORK_ROOT=$env:WORK_ROOT"
-          $proc = Start-Process -FilePath '.\logs2cookies.exe' -PassThru -NoNewWindow
+          $proc = Start-Process -FilePath '.\logs2cookies.exe' -PassThru -NoNewWindow `
+            -RedirectStandardOutput 'bot-out.log' -RedirectStandardError 'bot-err.log'
           $deadline = (Get-Date).AddHours($hours)
           while (-not $proc.HasExited) {
             if ((Get-Date) -gt $deadline) {
               Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
               Write-Host "Stopped after ${hours}h (planned shutdown)."
-              exit 0
+              break
             }
+            if (Test-Path bot-out.log) { Get-Content bot-out.log -Tail 5 -ErrorAction SilentlyContinue }
+            if (Test-Path bot-err.log) { Get-Content bot-err.log -Tail 5 -ErrorAction SilentlyContinue }
             Start-Sleep -Seconds 5
           }
+          Write-Host '--- bot stdout (tail) ---'
+          if (Test-Path bot-out.log) { Get-Content bot-out.log -Tail 50 }
+          Write-Host '--- bot stderr (tail) ---'
+          if (Test-Path bot-err.log) { Get-Content bot-err.log -Tail 50 }
+          if (-not $proc.HasExited) { exit 0 }
           exit $proc.ExitCode
