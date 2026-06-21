@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gotd/td/tg"
+	"github.com/amarnathcjd/gogram/telegram"
 )
 
 // extractSem caps concurrent heavy archive extractions to keep RAM bounded
@@ -225,8 +225,8 @@ func showDomainSelector(bot *Bot, s *Session) {
 	b.WriteString("type domains, e.g. `netflix paypal steam` — or tap below")
 
 	kb := inlineKeyboard(
-		[]tg.KeyboardButtonClass{cbBtn("📥 extract all", "qa:"+s.ID), cbBtn("🔝 top 50", "qt:"+s.ID)},
-		[]tg.KeyboardButtonClass{cbBtn("🔍 browse domains", "browse:"+s.ID), cbBtn("❌ cancel", "c:"+s.ID)},
+		[]telegram.KeyboardButton{cbBtn("📥 extract all", "qa:"+s.ID), cbBtn("🔝 top 50", "qt:"+s.ID)},
+		[]telegram.KeyboardButton{cbBtn("🔍 browse domains", "browse:"+s.ID), cbBtn("❌ cancel", "c:"+s.ID)},
 	)
 
 	sent, err := bot.SendTextWithKeyboard(s.ChatID, b.String(), kb)
@@ -234,7 +234,7 @@ func showDomainSelector(bot *Bot, s *Session) {
 		return
 	}
 	s.mu.Lock()
-	s.SelectorMsgID = sent.MsgID
+	s.SelectorMsgID = int(sent.ID)
 	s.State = StateAwaitingCustom
 	s.mu.Unlock()
 }
@@ -338,7 +338,7 @@ func max(a, b int) int {
 	return b
 }
 
-func buildKeyboard(s *Session) *tg.ReplyInlineMarkup {
+func buildKeyboard(s *Session) telegram.ReplyMarkup {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -370,9 +370,9 @@ func buildKeyboard(s *Session) *tg.ReplyInlineMarkup {
 		}
 	}
 
-	var rows [][]tg.KeyboardButtonClass
+	var rows [][]telegram.KeyboardButton
 	for i := 0; i < len(page); i += 2 {
-		var row []tg.KeyboardButtonClass
+		var row []telegram.KeyboardButton
 		for j := i; j < i+2 && j < len(page); j++ {
 			d := page[j]
 			mark := "◻"
@@ -386,7 +386,7 @@ func buildKeyboard(s *Session) *tg.ReplyInlineMarkup {
 	}
 
 	if totalPages > 1 {
-		rows = append(rows, []tg.KeyboardButtonClass{
+		rows = append(rows, []telegram.KeyboardButton{
 			cbBtn("◀️", "pp:"+s.ID),
 			cbBtn(fmt.Sprintf("%d / %d", s.CurrentPage+1, totalPages), "noop:"+s.ID),
 			cbBtn("▶️", "pn:"+s.ID),
@@ -397,11 +397,11 @@ func buildKeyboard(s *Session) *tg.ReplyInlineMarkup {
 	if s.SearchFilter != "" {
 		searchLabel = "🔍 " + truncate(s.SearchFilter, 10) + " ✕"
 	}
-	rows = append(rows, []tg.KeyboardButtonClass{
+	rows = append(rows, []telegram.KeyboardButton{
 		cbBtn(searchLabel, "s:"+s.ID),
 		cbBtn("➕ custom", "cd:"+s.ID),
 	})
-	rows = append(rows, []tg.KeyboardButtonClass{
+	rows = append(rows, []telegram.KeyboardButton{
 		cbBtn("☑️ all", "a:"+s.ID),
 		cbBtn("⬜ clear", "n:"+s.ID),
 		cbBtn("🔀 invert", "inv:"+s.ID),
@@ -411,15 +411,15 @@ func buildKeyboard(s *Session) *tg.ReplyInlineMarkup {
 	if selectedCookies > 0 {
 		extractLabel = fmt.Sprintf("📤 extract (%s)", commafy(selectedCookies))
 	}
-	rows = append(rows, []tg.KeyboardButtonClass{
+	rows = append(rows, []telegram.KeyboardButton{
 		cbBtn(extractLabel, "g:"+s.ID),
 		cbBtn("❌ cancel", "c:"+s.ID),
 	})
 	return inlineKeyboard(rows...)
 }
 
-func handleCallback(bot *Bot, cq IncomingCb) {
-	parts := strings.SplitN(cq.Data, ":", 3)
+func handleCallback(bot *Bot, cq *telegram.CallbackQuery) {
+	parts := strings.SplitN(cq.DataString(), ":", 3)
 	if len(parts) < 2 {
 		return
 	}
@@ -427,11 +427,11 @@ func handleCallback(bot *Bot, cq IncomingCb) {
 	sid := parts[1]
 	s := getSession(sid)
 	if s == nil {
-		bot.AnswerCallback(cq.QueryID, "session expired")
+		bot.AnswerCallback(cq, "session expired")
 		return
 	}
-	if cq.UserID != s.UserID {
-		bot.AnswerCallback(cq.QueryID, "not your session")
+	if cq.GetSenderID() != s.UserID {
+		bot.AnswerCallback(cq, "not your session")
 		return
 	}
 
@@ -442,7 +442,7 @@ func handleCallback(bot *Bot, cq IncomingCb) {
 			s.Selected[d] = true
 		}
 		s.mu.Unlock()
-		bot.AnswerCallback(cq.QueryID, "packing all…")
+		bot.AnswerCallback(cq, "packing all…")
 		generateAndSend(bot, s)
 		return
 	case "qt":
@@ -455,11 +455,11 @@ func handleCallback(bot *Bot, cq IncomingCb) {
 			s.Selected[d] = true
 		}
 		s.mu.Unlock()
-		bot.AnswerCallback(cq.QueryID, "packing top 50…")
+		bot.AnswerCallback(cq, "packing top 50…")
 		generateAndSend(bot, s)
 		return
 	case "browse":
-		bot.AnswerCallback(cq.QueryID, "")
+		bot.AnswerCallback(cq, "")
 		s.mu.Lock()
 		s.State = StateSelecting
 		s.mu.Unlock()
@@ -475,12 +475,12 @@ func handleCallback(bot *Bot, cq IncomingCb) {
 		sent, err := bot.SendTextWithKeyboard(s.ChatID, text, kb)
 		if err == nil {
 			s.mu.Lock()
-			s.SelectorMsgID = sent.MsgID
+			s.SelectorMsgID = int(sent.ID)
 			s.mu.Unlock()
 		}
 		return
 	case "noop":
-		bot.AnswerCallback(cq.QueryID, "")
+		bot.AnswerCallback(cq, "")
 	case "t":
 		if len(parts) < 3 {
 			return
@@ -492,13 +492,13 @@ func handleCallback(bot *Bot, cq IncomingCb) {
 			s.Selected[d] = !s.Selected[d]
 		}
 		s.mu.Unlock()
-		bot.AnswerCallback(cq.QueryID, "")
+		bot.AnswerCallback(cq, "")
 		redrawSelector(bot, s)
 	case "pn":
 		s.mu.Lock()
 		s.CurrentPage++
 		s.mu.Unlock()
-		bot.AnswerCallback(cq.QueryID, "")
+		bot.AnswerCallback(cq, "")
 		redrawSelector(bot, s)
 	case "pp":
 		s.mu.Lock()
@@ -506,7 +506,7 @@ func handleCallback(bot *Bot, cq IncomingCb) {
 			s.CurrentPage--
 		}
 		s.mu.Unlock()
-		bot.AnswerCallback(cq.QueryID, "")
+		bot.AnswerCallback(cq, "")
 		redrawSelector(bot, s)
 	case "s":
 		s.mu.Lock()
@@ -514,19 +514,19 @@ func handleCallback(bot *Bot, cq IncomingCb) {
 			s.SearchFilter = ""
 			s.CurrentPage = 0
 			s.mu.Unlock()
-			bot.AnswerCallback(cq.QueryID, "search cleared")
+			bot.AnswerCallback(cq, "search cleared")
 			redrawSelector(bot, s)
 			return
 		}
 		s.State = StateAwaitingSearch
 		s.mu.Unlock()
-		bot.AnswerCallback(cq.QueryID, "")
+		bot.AnswerCallback(cq, "")
 		bot.SendText(s.ChatID, "🔍 type a domain substring to filter, e.g. `netflix`")
 	case "cd":
 		s.mu.Lock()
 		s.State = StateAwaitingCustom
 		s.mu.Unlock()
-		bot.AnswerCallback(cq.QueryID, "")
+		bot.AnswerCallback(cq, "")
 		bot.SendText(s.ChatID, "➕ type a domain or substring, e.g. `netflix.com` or `netflix`\nseparate multiple with spaces or commas")
 	case "a":
 		s.mu.Lock()
@@ -534,7 +534,7 @@ func handleCallback(bot *Bot, cq IncomingCb) {
 			s.Selected[d] = true
 		}
 		s.mu.Unlock()
-		bot.AnswerCallback(cq.QueryID, "all selected")
+		bot.AnswerCallback(cq, "all selected")
 		redrawSelector(bot, s)
 	case "n":
 		s.mu.Lock()
@@ -542,7 +542,7 @@ func handleCallback(bot *Bot, cq IncomingCb) {
 			s.Selected[d] = false
 		}
 		s.mu.Unlock()
-		bot.AnswerCallback(cq.QueryID, "cleared")
+		bot.AnswerCallback(cq, "cleared")
 		redrawSelector(bot, s)
 	case "inv":
 		s.mu.Lock()
@@ -550,13 +550,13 @@ func handleCallback(bot *Bot, cq IncomingCb) {
 			s.Selected[d] = !s.Selected[d]
 		}
 		s.mu.Unlock()
-		bot.AnswerCallback(cq.QueryID, "inverted")
+		bot.AnswerCallback(cq, "inverted")
 		redrawSelector(bot, s)
 	case "g":
-		bot.AnswerCallback(cq.QueryID, "generating…")
+		bot.AnswerCallback(cq, "generating…")
 		generateAndSend(bot, s)
 	case "c":
-		bot.AnswerCallback(cq.QueryID, "cancelled")
+		bot.AnswerCallback(cq, "cancelled")
 		if s.SelectorMsgID != 0 {
 			bot.EditPlain(s.ChatID, s.SelectorMsgID, "❌ cancelled — files cleaned up.")
 		} else {
@@ -566,9 +566,9 @@ func handleCallback(bot *Bot, cq IncomingCb) {
 	}
 }
 
-func handleSearchReply(bot *Bot, m IncomingMsg, s *Session) {
-	q := strings.TrimSpace(m.Text)
-	bot.DeleteMessage(m.ChatID, m.MsgID)
+func handleSearchReply(bot *Bot, m *telegram.NewMessage, s *Session) {
+	q := strings.TrimSpace(m.Text())
+	bot.DeleteMessage(m.ChatID(), int(m.ID))
 	s.mu.Lock()
 	if strings.EqualFold(q, "clear") || q == "" {
 		s.SearchFilter = ""
@@ -581,8 +581,8 @@ func handleSearchReply(bot *Bot, m IncomingMsg, s *Session) {
 	redrawSelector(bot, s)
 }
 
-func handleCustomReply(bot *Bot, m IncomingMsg, s *Session) {
-	text := strings.TrimSpace(m.Text)
+func handleCustomReply(bot *Bot, m *telegram.NewMessage, s *Session) {
+	text := strings.TrimSpace(m.Text())
 	low := strings.ToLower(text)
 	parts := strings.FieldsFunc(text, func(r rune) bool {
 		return r == ',' || r == ' ' || r == ';' || r == '\n' || r == '\t'
@@ -684,7 +684,7 @@ func generateAndSend(bot *Bot, s *Session) {
 		}
 		zipPath := filepath.Join(jobDir, zipName)
 
-		editStatus(bot, packMsg, fmt.Sprintf(
+		editStatus(bot, sentFrom(packMsg), fmt.Sprintf(
 			"`[3/3]` 📦 *packing* `%d/%d` · `%s`",
 			i+1, len(jobs), escapeMd(job.label)))
 
@@ -724,7 +724,7 @@ func generateAndSend(bot *Bot, s *Session) {
 	packElapsed := time.Since(packStart)
 
 	if sentZips == 0 {
-		editStatus(bot, packMsg, "🤷 no cookies matched any selection")
+		editStatus(bot, sentFrom(packMsg), "🤷 no cookies matched any selection")
 		return
 	}
 
@@ -739,7 +739,7 @@ func generateAndSend(bot *Bot, s *Session) {
 			formatBytes(s.DownloadInfo.Bytes), s.DownloadInfo.Duration.Round(time.Second),
 			mbps, s.DownloadInfo.Parallel)
 	}
-	editStatus(bot, packMsg, b.String())
+	editStatus(bot, sentFrom(packMsg), b.String())
 
 	if s.SelectorMsgID != 0 {
 		bot.DeleteMessage(s.ChatID, s.SelectorMsgID)
@@ -747,30 +747,35 @@ func generateAndSend(bot *Bot, s *Session) {
 	cleanupSession(s)
 }
 
-func startSessionFromFile(bot *Bot, m IncomingMsg) {
-	doc := m.Document
-	if doc.FileSize > MAX_ARCHIVE_BYTES {
-		reply(bot, m, fmt.Sprintf("archive too big (%.1f GB, cap %d GB)", float64(doc.FileSize)/1e9, MAX_ARCHIVE_BYTES/(1024*1024*1024)))
+func startSessionFromFile(bot *Bot, m *telegram.NewMessage) {
+	doc := m.Document()
+	if doc == nil {
 		return
 	}
-	lname := strings.ToLower(doc.FileName)
+	name := docFileName(doc)
+	size := doc.Size
+	if size > MAX_ARCHIVE_BYTES {
+		reply(bot, m, fmt.Sprintf("archive too big (%.1f GB, cap %d GB)", float64(size)/1e9, MAX_ARCHIVE_BYTES/(1024*1024*1024)))
+		return
+	}
+	lname := strings.ToLower(name)
 	if !isArchiveUploadName(lname) {
 		reply(bot, m, "send a .zip or .rar archive (.r00/.r01 continuation parts are supported too)")
 		return
 	}
 
-	if s := getActiveSessionByChat(m.ChatID); s != nil && s.State == StateAwaitingParts {
-		addArchivePart(bot, m, s, doc)
+	if s := getActiveSessionByChat(m.ChatID()); s != nil && s.State == StateAwaitingParts {
+		addArchivePart(bot, m, s)
 		return
 	}
 
-	filter := parseFilter(m.Text)
-	s := startSession(m.ChatID, m.UserID, doc.FileName, filter)
-	destName := sanitizeArchiveFilename(doc.FileName)
+	filter := parseFilter(m.Text())
+	s := startSession(m.ChatID(), m.SenderID(), name, filter)
+	destName := sanitizeArchiveFilename(name)
 	s.ArchivePath = filepath.Join(s.JobDir, destName)
 	statusMsg, _ := bot.SendText(s.ChatID, fmt.Sprintf(
-		"`[1/3]` ⬇️ *downloading from telegram*\n%s\n`0%%`", escapeMd(doc.FileName)))
-	s.StatusMsgID = statusMsg.MsgID
+		"`[1/3]` ⬇️ *downloading from telegram*\n%s\n`0%%`", escapeMd(name)))
+	s.StatusMsgID = int(statusMsg.ID)
 
 	prog := func(done, total int64, bps float64) {
 		pct := 0.0
@@ -781,47 +786,53 @@ func startSessionFromFile(bot *Bot, m IncomingMsg) {
 		if bps > 1 && total > done {
 			eta = fmtDuration(float64(total-done) / bps)
 		}
-		editStatus(bot, statusMsg, fmt.Sprintf(
+		editStatus(bot, sentFrom(statusMsg), fmt.Sprintf(
 			"`[1/3]` ⬇️ *downloading*\n📦 `%s`\n%s\n`%s / %s` · `%.1f%%`\n⚡ `%s/s` · ETA `%s`",
-			escapeMd(doc.FileName),
+			escapeMd(name),
 			progressBar(pct, 20),
 			formatBytes(done), formatBytes(total), pct,
 			formatBytes(int64(bps)), eta,
 		))
 	}
-	if err := bot.DownloadDocument(doc.TG, s.ArchivePath, prog, MAX_ARCHIVE_BYTES); err != nil {
-		editStatus(bot, statusMsg, "❌ download failed: "+err.Error())
+	if err := bot.DownloadMessage(m, s.ArchivePath, prog, MAX_ARCHIVE_BYTES); err != nil {
+		editStatus(bot, sentFrom(statusMsg), "❌ download failed: "+err.Error())
 		cleanupSession(s)
 		return
 	}
 
-	if looksLikeMultipartRar(doc.FileName) {
+	if looksLikeMultipartRar(name) {
 		s.State = StateAwaitingParts
-		editStatus(bot, statusMsg, fmt.Sprintf(
+		editStatus(bot, sentFrom(statusMsg), fmt.Sprintf(
 			"📎 *part saved* `%s`\n\nsend the remaining .rar / .r00 parts, then `/done` to extract.\n`/cancel` to abort.",
 			escapeMd(destName)))
 		return
 	}
 
-	finishExtractAndShow(bot, s, statusMsg)
+	finishExtractAndShow(bot, s, sentFrom(statusMsg))
 }
 
-func addArchivePart(bot *Bot, m IncomingMsg, s *Session, doc *IncomingDoc) {
-	if doc.FileSize > MAX_ARCHIVE_BYTES {
-		reply(bot, m, fmt.Sprintf("archive too big (%.1f GB, cap %d GB)", float64(doc.FileSize)/1e9, MAX_ARCHIVE_BYTES/(1024*1024*1024)))
+func addArchivePart(bot *Bot, m *telegram.NewMessage, s *Session) {
+	doc := m.Document()
+	if doc == nil {
 		return
 	}
-	lname := strings.ToLower(doc.FileName)
+	name := docFileName(doc)
+	size := doc.Size
+	if size > MAX_ARCHIVE_BYTES {
+		reply(bot, m, fmt.Sprintf("archive too big (%.1f GB, cap %d GB)", float64(size)/1e9, MAX_ARCHIVE_BYTES/(1024*1024*1024)))
+		return
+	}
+	lname := strings.ToLower(name)
 	if !isArchiveUploadName(lname) {
 		reply(bot, m, "send .rar / .r00 continuation parts, or /done when finished")
 		return
 	}
 
-	destName := sanitizeArchiveFilename(doc.FileName)
+	destName := sanitizeArchiveFilename(name)
 	destPath := filepath.Join(s.JobDir, destName)
-	statusMsg := SentMsg{ChatID: s.ChatID, MsgID: s.StatusMsgID}
+	statusMsg := msgRef(s.ChatID, s.StatusMsgID)
 
-	if err := bot.DownloadDocument(doc.TG, destPath, nil, MAX_ARCHIVE_BYTES); err != nil {
+	if err := bot.DownloadMessage(m, destPath, nil, MAX_ARCHIVE_BYTES); err != nil {
 		editStatus(bot, statusMsg, "❌ download failed: "+err.Error())
 		return
 	}
@@ -832,7 +843,7 @@ func addArchivePart(bot *Bot, m IncomingMsg, s *Session, doc *IncomingDoc) {
 		len(vols), escapeMd(destName)))
 }
 
-func finishMultipartUpload(bot *Bot, m IncomingMsg, s *Session) {
+func finishMultipartUpload(bot *Bot, m *telegram.NewMessage, s *Session) {
 	openPath, err := resolveRarOpenPath(s.JobDir)
 	if err != nil {
 		reply(bot, m, err.Error())
@@ -840,21 +851,21 @@ func finishMultipartUpload(bot *Bot, m IncomingMsg, s *Session) {
 	}
 	s.ArchivePath = openPath
 	s.State = StateDownloading
-	statusMsg := SentMsg{ChatID: s.ChatID, MsgID: s.StatusMsgID}
+	statusMsg := msgRef(s.ChatID, s.StatusMsgID)
 	editStatus(bot, statusMsg, "`[2/3]` ⚙️ extracting multi-part rar…")
 	finishExtractAndShow(bot, s, statusMsg)
 }
 
-func startSessionFromURL(bot *Bot, m IncomingMsg, url string) {
+func startSessionFromURL(bot *Bot, m *telegram.NewMessage, url string) {
 	filter := ""
-	if rest := strings.TrimSpace(strings.Replace(m.Text, url, "", 1)); rest != "" {
+	if rest := strings.TrimSpace(strings.Replace(m.Text(), url, "", 1)); rest != "" {
 		filter = parseFilter(rest)
 	}
 	archName := archiveNameFromURL(url)
-	s := startSession(m.ChatID, m.UserID, archName, filter)
+	s := startSession(m.ChatID(), m.SenderID(), archName, filter)
 	statusMsg, _ := bot.SendText(s.ChatID, fmt.Sprintf(
 		"`[1/3]` 🔍 *resolving* `%s`…", escapeMd(archName)))
-	s.StatusMsgID = statusMsg.MsgID
+	s.StatusMsgID = int(statusMsg.ID)
 
 	downloadName := sanitizeArchiveFilename(archName)
 	if downloadName == "" || downloadName == "download" {
@@ -880,7 +891,7 @@ func startSessionFromURL(bot *Bot, m IncomingMsg, url string) {
 			etaSec := float64(total-d) / bps
 			eta = fmtDuration(etaSec)
 		}
-		editStatus(bot, statusMsg, fmt.Sprintf(
+		editStatus(bot, sentFrom(statusMsg), fmt.Sprintf(
 			"`[1/3]` ⬇️ *downloading url* (`%dx` parallel)\n📦 `%s`\n%s\n`%s / %s` · `%.1f%%`\n⚡ `%s/s` · ETA `%s`",
 			DEFAULT_PARALLEL,
 			escapeMd(archName),
@@ -891,7 +902,7 @@ func startSessionFromURL(bot *Bot, m IncomingMsg, url string) {
 
 	res, err := parallelDownload(ctx, url, s.ArchivePath, DEFAULT_PARALLEL, MAX_ARCHIVE_BYTES_URL, prog)
 	if err != nil {
-		editStatus(bot, statusMsg, "download failed: "+err.Error())
+		editStatus(bot, sentFrom(statusMsg), "download failed: "+err.Error())
 		cleanupSession(s)
 		return
 	}
@@ -902,7 +913,7 @@ func startSessionFromURL(bot *Bot, m IncomingMsg, url string) {
 		if detail == "" {
 			detail = "unknown content-type"
 		}
-		editStatus(bot, statusMsg, fmt.Sprintf(
+		editStatus(bot, sentFrom(statusMsg), fmt.Sprintf(
 			"download failed: URL returned `%s`, not a zip/rar archive.\nPaste the direct final archive URL.",
 			escapeMd(detail)))
 		cleanupSession(s)
@@ -910,7 +921,7 @@ func startSessionFromURL(bot *Bot, m IncomingMsg, url string) {
 	}
 	finalPath := filepath.Join(s.JobDir, strings.TrimSuffix(downloadName, filepath.Ext(downloadName))+ext)
 	if err := os.Rename(s.ArchivePath, finalPath); err != nil {
-		editStatus(bot, statusMsg, "download failed: "+err.Error())
+		editStatus(bot, sentFrom(statusMsg), "download failed: "+err.Error())
 		cleanupSession(s)
 		return
 	}
@@ -925,10 +936,10 @@ func startSessionFromURL(bot *Bot, m IncomingMsg, url string) {
 	}
 	s.ArchiveName = archName
 	s.DownloadInfo = res
-	editStatus(bot, statusMsg, fmt.Sprintf(
+	editStatus(bot, sentFrom(statusMsg), fmt.Sprintf(
 		"`[1/3]` ✅ *downloaded* `%s` in `%s` (`%dx`)\n`[2/3]` ⚙️ extracting…",
 		formatBytes(res.Bytes), res.Duration.Round(time.Second), res.Parallel))
-	finishExtractAndShow(bot, s, statusMsg)
+	finishExtractAndShow(bot, s, sentFrom(statusMsg))
 }
 
 func archiveNameFromURL(rawURL string) string {
@@ -964,15 +975,16 @@ func finishExtractAndShow(bot *Bot, s *Session, statusMsg SentMsg) {
 		cleanupSession(s)
 		return
 	}
-	bot.DeleteMessage(s.ChatID, statusMsg.MsgID)
+	bot.DeleteMessage(s.ChatID, int(statusMsg.MsgID))
 	showDomainSelector(bot, s)
 }
 
-func handlePasswordReply(bot *Bot, m IncomingMsg, s *Session) {
-	pass := m.Text
-	bot.DeleteMessage(m.ChatID, m.MsgID)
+func handlePasswordReply(bot *Bot, m *telegram.NewMessage, s *Session) {
+	pass := m.Text()
+	bot.DeleteMessage(m.ChatID(), int(m.ID))
 	s.Password = pass
-	statusMsg, _ := bot.SendText(s.ChatID, "🔓 trying password…")
+	statusSent, _ := bot.SendText(s.ChatID, "🔓 trying password…")
+	statusMsg := sentFrom(statusSent)
 	stop := startExtractHeartbeat(bot, statusMsg)
 	err := runArchiveExtraction(s)
 	close(stop)
@@ -994,7 +1006,7 @@ func handlePasswordReply(bot *Bot, m IncomingMsg, s *Session) {
 		cleanupSession(s)
 		return
 	}
-	bot.DeleteMessage(s.ChatID, statusMsg.MsgID)
+	bot.DeleteMessage(s.ChatID, int(statusMsg.MsgID))
 	showDomainSelector(bot, s)
 }
 

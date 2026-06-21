@@ -16,6 +16,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/amarnathcjd/gogram/telegram"
 )
 
 const (
@@ -77,7 +79,7 @@ func main() {
 	}
 }
 
-func handle(bot *Bot, m IncomingMsg) {
+func handle(bot *Bot, m *telegram.NewMessage) {
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("panic: %v", r)
@@ -85,19 +87,19 @@ func handle(bot *Bot, m IncomingMsg) {
 		}
 	}()
 
-	if m.Command != "" {
-		switch m.Command {
+	if m.IsCommand() {
+		switch commandName(m) {
 		case "start", "help":
 			reply(bot, m, helpText())
 		case "cancel":
-			if s := getActiveSessionByChat(m.ChatID); s != nil {
+			if s := getActiveSessionByChat(m.ChatID()); s != nil {
 				cleanupSession(s)
 				reply(bot, m, "session cancelled, files cleaned up")
 			} else {
 				reply(bot, m, "no active session")
 			}
 		case "done":
-			if s := getActiveSessionByChat(m.ChatID); s != nil && s.State == StateAwaitingParts {
+			if s := getActiveSessionByChat(m.ChatID()); s != nil && s.State == StateAwaitingParts {
 				finishMultipartUpload(bot, m, s)
 			} else {
 				reply(bot, m, "no multi-part upload in progress — send archive parts first")
@@ -106,12 +108,12 @@ func handle(bot *Bot, m IncomingMsg) {
 		return
 	}
 
-	if m.Document != nil {
+	if m.Document() != nil {
 		startSessionFromFile(bot, m)
 		return
 	}
 
-	if s := getActiveSessionByChat(m.ChatID); s != nil && m.Text != "" {
+	if s := getActiveSessionByChat(m.ChatID()); s != nil && m.Text() != "" {
 		switch s.State {
 		case StateAwaitingPassword:
 			handlePasswordReply(bot, m, s)
@@ -125,7 +127,7 @@ func handle(bot *Bot, m IncomingMsg) {
 		}
 	}
 
-	if url := extractURL(m.Text); url != "" {
+	if url := extractURL(m.Text()); url != "" {
 		startSessionFromURL(bot, m, url)
 		return
 	}
@@ -551,7 +553,7 @@ func helpText() string {
 		"extracts per-victim cookie files from stealer log archives.",
 		"",
 		"*step 1 — send the archive*",
-		"  📎 attach a .zip or .rar (up to `2 GB` via MTProto)",
+		"  📎 attach a .zip or .rar (up to `2 GB`)",
 		"  📎 multi-part rar? send all parts (.rar + .r00/.r01 or .part1.rar …) then `/done`",
 		"  🔗 or paste a direct URL / simple redirect to a .zip or .rar (up to `5 GB`)",
 		"  🪆 nested archives unpacked automatically (up to 4 levels)",
@@ -572,17 +574,14 @@ func helpText() string {
 	}, "\n")
 }
 
-func reply(bot *Bot, m IncomingMsg, text string) {
-	if _, err := bot.SendTextTo(m.ChatID, m.Peer, text); err != nil {
-		log.Printf("reply chat=%d failed: %v", m.ChatID, err)
+func reply(bot *Bot, m *telegram.NewMessage, text string) {
+	if _, err := m.Reply(text, sendOpts()); err != nil {
+		log.Printf("reply chat=%d failed: %v", m.ChatID(), err)
 	}
 }
 
-func editStatus(bot *Bot, m SentMsg, text string) {
-	if m.MsgID == 0 {
-		return
-	}
-	bot.EditStatus(m, text)
+func editStatus(bot *Bot, s SentMsg, text string) {
+	bot.EditStatus(s, text)
 }
 
 type progressFn func(done, total int64, bps float64)
