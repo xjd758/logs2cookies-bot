@@ -16,6 +16,7 @@ import (
 	"github.com/gotd/td/telegram/downloader"
 	"github.com/gotd/td/telegram/message"
 	"github.com/gotd/td/telegram/message/html"
+	"github.com/gotd/td/telegram/message/peer"
 	"github.com/gotd/td/telegram/message/unpack"
 	"github.com/gotd/td/telegram/uploader"
 	"github.com/gotd/td/tg"
@@ -49,6 +50,7 @@ type IncomingMsg struct {
 	Text     string
 	Document *IncomingDoc
 	Command  string
+	Peer     tg.InputPeerClass
 }
 
 type IncomingCb struct {
@@ -135,6 +137,14 @@ func runTelegramBot(root string) error {
 				return nil
 			}
 			msg := bot.incomingFromTG(entities, m)
+			ent := peer.EntitiesFromUpdate(entities)
+			if inputPeer, err := ent.ExtractPeer(m.GetPeerID()); err != nil {
+				log.Printf("extract peer chat=%d: %v", msg.ChatID, err)
+			} else {
+				msg.Peer = inputPeer
+				bot.rememberPeer(msg.ChatID, inputPeer)
+			}
+			log.Printf("message chat=%d user=%d cmd=%q len=%d", msg.ChatID, msg.UserID, msg.Command, len(msg.Text))
 			go bot.safeHandle(msg)
 			return nil
 		})
@@ -152,7 +162,9 @@ func (b *Bot) safeHandle(m IncomingMsg) {
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("panic: %v", r)
-			b.SendText(m.ChatID, fmt.Sprintf("internal error: %v", r))
+			if _, err := b.SendTextTo(m.ChatID, m.Peer, fmt.Sprintf("internal error: %v", r)); err != nil {
+				log.Printf("error reply after panic: %v", err)
+			}
 		}
 	}()
 	handle(b, m)
@@ -350,10 +362,26 @@ func htmlEscape(s string) string {
 	return r.Replace(s)
 }
 
+func (b *Bot) sendPeer(chatID int64, peer tg.InputPeerClass) tg.InputPeerClass {
+	if peer != nil {
+		return peer
+	}
+	return b.peer(chatID)
+}
+
 func (b *Bot) SendText(chatID int64, text string) (SentMsg, error) {
-	updates, err := b.sender.To(b.peer(chatID)).StyledText(b.ctx, styledMD(text))
+	return b.SendTextTo(chatID, b.peer(chatID), text)
+}
+
+func (b *Bot) SendTextTo(chatID int64, peer tg.InputPeerClass, text string) (SentMsg, error) {
+	p := b.sendPeer(chatID, peer)
+	updates, err := b.sender.To(p).StyledText(b.ctx, styledMD(text))
 	if err != nil {
-		return SentMsg{}, err
+		log.Printf("styled send failed chat=%d: %v — retrying plain", chatID, err)
+		updates, err = b.sender.To(p).Text(b.ctx, text)
+		if err != nil {
+			return SentMsg{}, err
+		}
 	}
 	id, err := unpack.MessageID(updates, nil)
 	return SentMsg{ChatID: chatID, MsgID: id}, err

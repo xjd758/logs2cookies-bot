@@ -81,26 +81,26 @@ func handle(bot *Bot, m IncomingMsg) {
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("panic: %v", r)
-			reply(bot, m.ChatID, m.MsgID, fmt.Sprintf("internal error: %v", r))
+			reply(bot, m, fmt.Sprintf("internal error: %v", r))
 		}
 	}()
 
 	if m.Command != "" {
 		switch m.Command {
 		case "start", "help":
-			reply(bot, m.ChatID, m.MsgID, helpText())
+			reply(bot, m, helpText())
 		case "cancel":
 			if s := getActiveSessionByChat(m.ChatID); s != nil {
 				cleanupSession(s)
-				reply(bot, m.ChatID, m.MsgID, "session cancelled, files cleaned up")
+				reply(bot, m, "session cancelled, files cleaned up")
 			} else {
-				reply(bot, m.ChatID, m.MsgID, "no active session")
+				reply(bot, m, "no active session")
 			}
 		case "done":
 			if s := getActiveSessionByChat(m.ChatID); s != nil && s.State == StateAwaitingParts {
 				finishMultipartUpload(bot, m, s)
 			} else {
-				reply(bot, m.ChatID, m.MsgID, "no multi-part upload in progress — send archive parts first")
+				reply(bot, m, "no multi-part upload in progress — send archive parts first")
 			}
 		}
 		return
@@ -572,8 +572,10 @@ func helpText() string {
 	}, "\n")
 }
 
-func reply(bot *Bot, chatID int64, replyTo int, text string) {
-	bot.SendText(chatID, text)
+func reply(bot *Bot, m IncomingMsg, text string) {
+	if _, err := bot.SendTextTo(m.ChatID, m.Peer, text); err != nil {
+		log.Printf("reply chat=%d failed: %v", m.ChatID, err)
+	}
 }
 
 func editStatus(bot *Bot, m SentMsg, text string) {

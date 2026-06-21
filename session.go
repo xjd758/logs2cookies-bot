@@ -750,12 +750,12 @@ func generateAndSend(bot *Bot, s *Session) {
 func startSessionFromFile(bot *Bot, m IncomingMsg) {
 	doc := m.Document
 	if doc.FileSize > MAX_ARCHIVE_BYTES {
-		reply(bot, m.ChatID, m.MsgID, fmt.Sprintf("archive too big (%.1f GB, cap %d GB)", float64(doc.FileSize)/1e9, MAX_ARCHIVE_BYTES/(1024*1024*1024)))
+		reply(bot, m, fmt.Sprintf("archive too big (%.1f GB, cap %d GB)", float64(doc.FileSize)/1e9, MAX_ARCHIVE_BYTES/(1024*1024*1024)))
 		return
 	}
 	lname := strings.ToLower(doc.FileName)
 	if !isArchiveUploadName(lname) {
-		reply(bot, m.ChatID, m.MsgID, "send a .zip or .rar archive (.r00/.r01 continuation parts are supported too)")
+		reply(bot, m, "send a .zip or .rar archive (.r00/.r01 continuation parts are supported too)")
 		return
 	}
 
@@ -808,12 +808,12 @@ func startSessionFromFile(bot *Bot, m IncomingMsg) {
 
 func addArchivePart(bot *Bot, m IncomingMsg, s *Session, doc *IncomingDoc) {
 	if doc.FileSize > MAX_ARCHIVE_BYTES {
-		reply(bot, m.ChatID, m.MsgID, fmt.Sprintf("archive too big (%.1f GB, cap %d GB)", float64(doc.FileSize)/1e9, MAX_ARCHIVE_BYTES/(1024*1024*1024)))
+		reply(bot, m, fmt.Sprintf("archive too big (%.1f GB, cap %d GB)", float64(doc.FileSize)/1e9, MAX_ARCHIVE_BYTES/(1024*1024*1024)))
 		return
 	}
 	lname := strings.ToLower(doc.FileName)
 	if !isArchiveUploadName(lname) {
-		reply(bot, m.ChatID, m.MsgID, "send .rar / .r00 continuation parts, or /done when finished")
+		reply(bot, m, "send .rar / .r00 continuation parts, or /done when finished")
 		return
 	}
 
@@ -835,7 +835,7 @@ func addArchivePart(bot *Bot, m IncomingMsg, s *Session, doc *IncomingDoc) {
 func finishMultipartUpload(bot *Bot, m IncomingMsg, s *Session) {
 	openPath, err := resolveRarOpenPath(s.JobDir)
 	if err != nil {
-		reply(bot, m.ChatID, m.MsgID, err.Error())
+		reply(bot, m, err.Error())
 		return
 	}
 	s.ArchivePath = openPath
