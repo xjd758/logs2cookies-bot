@@ -12,8 +12,8 @@ import (
 	"github.com/amarnathcjd/gogram/telegram"
 )
 
-// MAX_ARCHIVE_BYTES is the Telegram MTProto upload cap (2 GB).
-const MAX_ARCHIVE_BYTES = 2 * 1024 * 1024 * 1024
+// MAX_NEST_STREAM_BYTES caps streamed nested-archive reads (not Telegram uploads).
+const MAX_NEST_STREAM_BYTES = 16 * 1024 * 1024 * 1024
 
 // Bot wraps a gogram MTProto client (messaging + large downloads).
 type Bot struct {
@@ -103,14 +103,11 @@ func (b *Bot) SendDocument(chatID int64, path, caption string) error {
 	return err
 }
 
-func (b *Bot) DownloadMessage(msg *telegram.NewMessage, dst string, prog progressFn, maxBytes int64) error {
+func (b *Bot) DownloadMessage(msg *telegram.NewMessage, dst string, prog progressFn) error {
 	if msg == nil || msg.Document() == nil {
 		return fmt.Errorf("missing document")
 	}
 	doc := msg.Document()
-	if doc.Size > maxBytes {
-		return fmt.Errorf("file too large (cap %s)", formatBytes(maxBytes))
-	}
 
 	out, err := os.Create(dst)
 	if err != nil {

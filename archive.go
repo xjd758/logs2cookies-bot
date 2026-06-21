@@ -81,7 +81,7 @@ func spawnNestedSpool(reader io.Reader, name string, filter, password string, de
 	}
 	tmpPath := tmp.Name()
 	defer os.Remove(tmpPath)
-	if _, err := io.Copy(tmp, io.LimitReader(reader, MAX_ARCHIVE_BYTES)); err != nil {
+	if _, err := io.Copy(tmp, io.LimitReader(reader, MAX_NEST_STREAM_BYTES)); err != nil {
 		tmp.Close()
 		return err
 	}

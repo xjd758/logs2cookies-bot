@@ -553,7 +553,7 @@ func helpText() string {
 		"extracts per-victim cookie files from stealer log archives.",
 		"",
 		"*step 1 — send the archive*",
-		"  📎 attach a .zip or .rar (up to `2 GB`)",
+		"  📎 attach a .zip or .rar",
 		"  📎 multi-part rar? send all parts (.rar + .r00/.r01 or .part1.rar …) then `/done`",
 		"  🔗 or paste a direct URL / simple redirect to a .zip or .rar (up to `5 GB`)",
 		"  🪆 nested archives unpacked automatically (up to 4 levels)",

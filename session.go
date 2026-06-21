@@ -753,11 +753,6 @@ func startSessionFromFile(bot *Bot, m *telegram.NewMessage) {
 		return
 	}
 	name := docFileName(doc)
-	size := doc.Size
-	if size > MAX_ARCHIVE_BYTES {
-		reply(bot, m, fmt.Sprintf("archive too big (%.1f GB, cap %d GB)", float64(size)/1e9, MAX_ARCHIVE_BYTES/(1024*1024*1024)))
-		return
-	}
 	lname := strings.ToLower(name)
 	if !isArchiveUploadName(lname) {
 		reply(bot, m, "send a .zip or .rar archive (.r00/.r01 continuation parts are supported too)")
@@ -794,7 +789,7 @@ func startSessionFromFile(bot *Bot, m *telegram.NewMessage) {
 			formatBytes(int64(bps)), eta,
 		))
 	}
-	if err := bot.DownloadMessage(m, s.ArchivePath, prog, MAX_ARCHIVE_BYTES); err != nil {
+	if err := bot.DownloadMessage(m, s.ArchivePath, prog); err != nil {
 		editStatus(bot, sentFrom(statusMsg), "❌ download failed: "+err.Error())
 		cleanupSession(s)
 		return
@@ -817,11 +812,6 @@ func addArchivePart(bot *Bot, m *telegram.NewMessage, s *Session) {
 		return
 	}
 	name := docFileName(doc)
-	size := doc.Size
-	if size > MAX_ARCHIVE_BYTES {
-		reply(bot, m, fmt.Sprintf("archive too big (%.1f GB, cap %d GB)", float64(size)/1e9, MAX_ARCHIVE_BYTES/(1024*1024*1024)))
-		return
-	}
 	lname := strings.ToLower(name)
 	if !isArchiveUploadName(lname) {
 		reply(bot, m, "send .rar / .r00 continuation parts, or /done when finished")
@@ -832,7 +822,7 @@ func addArchivePart(bot *Bot, m *telegram.NewMessage, s *Session) {
 	destPath := filepath.Join(s.JobDir, destName)
 	statusMsg := msgRef(s.ChatID, s.StatusMsgID)
 
-	if err := bot.DownloadMessage(m, destPath, nil, MAX_ARCHIVE_BYTES); err != nil {
+	if err := bot.DownloadMessage(m, destPath, nil); err != nil {
 		editStatus(bot, statusMsg, "❌ download failed: "+err.Error())
 		return
 	}
