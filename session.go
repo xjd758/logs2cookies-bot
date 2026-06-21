@@ -795,10 +795,10 @@ func startSessionFromFile(bot *Bot, m *telegram.NewMessage) {
 		return
 	}
 
-	if looksLikeMultipartRar(name) || archiveExpectsMoreVolumes(s.ArchivePath) {
+	if shouldAwaitRarParts(name) {
 		s.State = StateAwaitingParts
 		editStatus(bot, sentFrom(statusMsg), fmt.Sprintf(
-			"📎 *part saved* `%s`\n\nsend the remaining .rar / .r00 parts, then `/done` to extract.\n`/cancel` to abort.",
+			"📎 *part saved* `%s`\n\nif split: send the other `.rar` / `.r00` parts.\nwhen ready (single or multi-part), send `/done` to extract.\n`/cancel` to abort.",
 			escapeMd(destName)))
 		return
 	}
@@ -829,7 +829,7 @@ func addArchivePart(bot *Bot, m *telegram.NewMessage, s *Session) {
 
 	vols, _ := listRarVolumes(s.JobDir)
 	editStatus(bot, statusMsg, fmt.Sprintf(
-		"📎 *%d part(s) saved*\nlatest: `%s`\n\nsend more parts, then `/done` to extract.\n`/cancel` to abort.",
+		"📎 *%d part(s) saved*\nlatest: `%s`\n\nsend more parts if needed, then `/done` to extract.\n`/cancel` to abort.",
 		len(vols), escapeMd(destName)))
 }
 
@@ -964,6 +964,15 @@ func finishExtractAndShow(bot *Bot, s *Session, statusMsg SentMsg) {
 	if errors.Is(err, ErrPasswordRequired) {
 		s.State = StateAwaitingPassword
 		editStatus(bot, statusMsg, "🔒 *password required*\nreply with the archive password to unlock it.")
+		return
+	}
+	if errors.Is(err, ErrRarPartsMissing) {
+		s.State = StateAwaitingParts
+		s.ArchivePath = ""
+		vols, _ := listRarVolumes(s.JobDir)
+		editStatus(bot, statusMsg, fmt.Sprintf(
+			"📎 *need more rar parts*\nhave: `%s`\n\nsend remaining parts, then `/done`.\n`/cancel` to abort.",
+			escapeMd(formatRarVolumeList(vols))))
 		return
 	}
 	if err != nil {

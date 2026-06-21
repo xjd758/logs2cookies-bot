@@ -4,15 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
-
-	"github.com/nwaples/rardecode/v2"
 )
 
 var (
@@ -264,27 +261,8 @@ func removeArchiveFiles(dir string) {
 	}
 }
 
-// archiveExpectsMoreVolumes reports whether a lone .rar still needs continuation files.
-func archiveExpectsMoreVolumes(path string) bool {
-	rc, err := rardecode.OpenReader(path)
-	if err != nil {
-		return false
-	}
-	defer rc.Close()
-	for {
-		_, err := rc.Next()
-		if err == nil {
-			continue
-		}
-		if errors.Is(err, io.EOF) {
-			return false
-		}
-		if errors.Is(err, rardecode.ErrMultiVolume) {
-			return true
-		}
-		if errors.Is(err, fs.ErrNotExist) {
-			return true
-		}
-		return false
-	}
+func shouldAwaitRarParts(name string) bool {
+	low := strings.ToLower(filepath.Base(name))
+	// Any .rar upload waits for /done so split sets (foo.rar + foo.part2.rar) never auto-extract early.
+	return strings.HasSuffix(low, ".rar") || isRarContinuationExt(filepath.Ext(low))
 }
