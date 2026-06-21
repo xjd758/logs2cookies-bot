@@ -795,7 +795,7 @@ func startSessionFromFile(bot *Bot, m *telegram.NewMessage) {
 		return
 	}
 
-	if looksLikeMultipartRar(name) {
+	if looksLikeMultipartRar(name) || archiveExpectsMoreVolumes(s.ArchivePath) {
 		s.State = StateAwaitingParts
 		editStatus(bot, sentFrom(statusMsg), fmt.Sprintf(
 			"📎 *part saved* `%s`\n\nsend the remaining .rar / .r00 parts, then `/done` to extract.\n`/cancel` to abort.",
@@ -834,6 +834,15 @@ func addArchivePart(bot *Bot, m *telegram.NewMessage, s *Session) {
 }
 
 func finishMultipartUpload(bot *Bot, m *telegram.NewMessage, s *Session) {
+	vols, err := listRarVolumes(s.JobDir)
+	if err != nil {
+		reply(bot, m, err.Error())
+		return
+	}
+	if err := validateRarVolumeSet(vols); err != nil {
+		reply(bot, m, err.Error())
+		return
+	}
 	openPath, err := resolveRarOpenPath(s.JobDir)
 	if err != nil {
 		reply(bot, m, err.Error())
@@ -842,7 +851,9 @@ func finishMultipartUpload(bot *Bot, m *telegram.NewMessage, s *Session) {
 	s.ArchivePath = openPath
 	s.State = StateDownloading
 	statusMsg := msgRef(s.ChatID, s.StatusMsgID)
-	editStatus(bot, statusMsg, "`[2/3]` ⚙️ extracting multi-part rar…")
+	editStatus(bot, statusMsg, fmt.Sprintf(
+		"`[2/3]` ⚙️ extracting multi-part rar…\n`%d` part(s): `%s`",
+		len(vols), escapeMd(formatRarVolumeList(vols))))
 	finishExtractAndShow(bot, s, statusMsg)
 }
 
