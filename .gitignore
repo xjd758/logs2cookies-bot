@@ -1,0 +1,19 @@
+# binaries (built in CI or locally)
+logs2cookies
+logs2cookies-linux
+logs2cookies.exe
+*.exe
+
+# runtime
+work/
+D:/botdata/
+*.spool
+download.bin
+
+# secrets
+.env
+.env.*
+!.env.example
+
+# go
+/vendor/

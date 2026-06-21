@@ -1,0 +1,80 @@
+name: Run logs2cookies bot
+
+on:
+  workflow_dispatch:
+    inputs:
+      hours:
+        description: How long to keep the bot online
+        required: true
+        default: "6"
+        type: choice
+        options:
+          - "1"
+          - "2"
+          - "4"
+          - "6"
+
+concurrency:
+  group: logs2cookies-bot
+  cancel-in-progress: true
+
+jobs:
+  bot:
+    # Windows runner: large temp storage lives on D: (not the small C: OS disk)
+    runs-on: windows-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Show D drive storage
+        shell: pwsh
+        run: |
+          Get-PSDrive -PSProvider FileSystem | Format-Table Name, Used, Free -AutoSize
+          New-Item -ItemType Directory -Force -Path 'D:\botdata' | Out-Null
+          Write-Host 'Bot work dir: D:\botdata\work'
+
+      - name: Test
+        run: go test ./...
+
+      - name: Build
+        run: go build -ldflags="-s -w" -o logs2cookies.exe .
+
+      - name: Run bot
+        shell: pwsh
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+          WORK_ROOT: D:/botdata/work
+        run: |
+          if (-not $env:BOT_TOKEN) {
+            Write-Error 'Add BOT_TOKEN to repo Settings → Secrets → Actions'
+            exit 1
+          }
+          if (-not $env:TELEGRAM_API_ID -or -not $env:TELEGRAM_API_HASH) {
+            Write-Error 'Add TELEGRAM_API_ID and TELEGRAM_API_HASH (from https://my.telegram.org/apps)'
+            exit 1
+          }
+          $hours = '${{ github.event.inputs.hours }}'
+          if (-not $hours) { $hours = '6' }
+          $hours = [int]$hours
+          Write-Host "Starting bot for ${hours}h on WORK_ROOT=$env:WORK_ROOT"
+          $proc = Start-Process -FilePath '.\logs2cookies.exe' -PassThru -NoNewWindow
+          $deadline = (Get-Date).AddHours($hours)
+          while (-not $proc.HasExited) {
+            if ((Get-Date) -gt $deadline) {
+              Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+              Write-Host "Stopped after ${hours}h (planned shutdown)."
+              exit 0
+            }
+            Start-Sleep -Seconds 5
+          }
+          exit $proc.ExitCode
